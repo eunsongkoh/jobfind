@@ -2,7 +2,7 @@ import gspread
 
 from ..models import ScoredJob
 
-_HEADER = ["title", "company", "location", "link", "date_detected", "score", "rationale", "description", "date_posted"]
+_HEADER = ["title", "company", "location", "link", "date_detected", "description", "date_posted", "score", "rationale"]
 
 _DESCRIPTION_LIMIT = 3000
 
@@ -37,10 +37,10 @@ class SheetsWriter:
                 sj.job.location,
                 sj.job.job_url,
                 sj.job.date_detected,
-                sj.score,
-                sj.rationale,
                 _truncate(sj.job.description),
                 sj.job.date_posted or "",
+                sj.score,
+                sj.rationale,
             ]
             for sj in scored_jobs
         ]

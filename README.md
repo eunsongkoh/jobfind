@@ -20,8 +20,8 @@ application-answering logic here — that lives in a separate, private repo.
   (OpenRouter by default) to score each new posting against `profile.yaml`.
   Only postings above the configured threshold get written.
 - **Output** (`src/jobfind/sinks/sheets_writer.py`): matches are appended to a
-  `Jobs` tab — title, company, location, link (clickable), date detected, score,
-  rationale, description, date posted.
+  `Jobs` tab — title, company, location, link (clickable), date detected,
+  description, date posted, score, rationale.
 - **Scheduling**: `.github/workflows/discover.yml` runs the pipeline hourly via
   `cron`, plus `workflow_dispatch` for manual test runs.
 
