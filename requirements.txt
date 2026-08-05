@@ -1,0 +1,9 @@
+python-jobspy>=1.1.82
+pandas
+requests
+tenacity
+PyYAML
+pydantic>=2
+gspread>=6
+google-auth
+pytest

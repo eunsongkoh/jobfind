@@ -1,0 +1,74 @@
+# Copy this file to config.yaml and fill in real values.
+# config.yaml is gitignored — it never gets committed, even after this repo goes public.
+
+tracks:
+  # Which tracks run each hour. Add "internship" and/or "mid_level" to enable them —
+  # no code changes needed, just add the name here.
+  active: [new_grad]
+
+  definitions:
+    new_grad:
+      jobspy_job_type: fulltime
+      keywords_include: ["software engineer", "new grad", "swe", "backend", "full stack"]
+      keywords_exclude: ["senior", "staff", "principal"]
+      github_trackers:
+        - name: simplify_new_grad
+          url: "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md"
+        - name: vansh_new_grad
+          url: "https://raw.githubusercontent.com/vanshb03/New-Grad-2026/main/README.md"
+
+    internship:
+      jobspy_job_type: internship
+      keywords_include: ["intern", "internship"]
+      keywords_exclude: []
+      github_trackers:
+        - name: simplify_internships
+          url: "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/README.md"
+        - name: vansh_internships
+          url: "https://raw.githubusercontent.com/vanshb03/Summer2027-Internships/main/README.md"
+
+    mid_level:
+      jobspy_job_type: fulltime
+      keywords_include: ["software engineer"]
+      keywords_exclude: ["staff", "principal", "new grad", "intern"]
+      github_trackers: []   # no ready-made tracker repos for mid-level; ATS/jobspy only
+
+# Locations allowed through the filter. "Remote" is treated as a location match
+# regardless of the job's listed city if the job is flagged remote.
+locations: ["United States", "Remote"]
+
+# Which discovery source modules run. Remove a name to disable that source entirely
+# without deleting its code.
+active_sources: [jobspy, github_trackers, ats]
+
+jobspy:
+  enabled_sites: [linkedin, indeed, zip_recruiter, google]   # drop a site here if it's persistently rate-limited
+  results_wanted: 20
+  hours_old: 3
+  country_indeed: "USA"
+
+# Direct ATS polling for specific companies. Empty by default — add entries as you like.
+# identifier is the last path segment of the company's public careers URL.
+target_companies: []
+# - name: "Stripe"
+#   ats: greenhouse
+#   identifier: "stripe"        # boards.greenhouse.io/stripe
+# - name: "Ramp"
+#   ats: lever
+#   identifier: "ramp"          # jobs.lever.co/ramp
+# - name: "Notion"
+#   ats: ashby
+#   identifier: "notion"        # jobs.ashbyhq.com/notion
+
+dedup:
+  retention_days: 120
+
+scoring:
+  provider: openrouter
+  model: "openai/gpt-oss-20b:free"    # free-tier model slugs rotate — check https://openrouter.ai/models
+  score_threshold: 70
+
+sheets:
+  sheet_id: "<google-sheet-id-from-the-sheet-url>"
+  jobs_worksheet: "Jobs"
+  seen_worksheet: "SeenJobs"

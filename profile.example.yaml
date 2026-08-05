@@ -1,0 +1,37 @@
+# Copy this file to profile.yaml and fill in your real values.
+# profile.yaml is gitignored — it never gets committed, even after this repo goes public.
+#
+# This file is scoring input only: role/seniority/skills/location preferences used to
+# judge job relevance. It must never contain contact info, resume content, or anything
+# used to apply to jobs — that lives in a separate, private vault outside this repo.
+
+role_target:
+  - "Software Engineer"
+  - "Backend Engineer"
+  - "Full Stack Engineer"
+
+# Optional — informs eligibility window for new-grad postings. Remove if not applicable.
+graduation_date: "2026-05"
+
+skills:
+  - "Python"
+  - "TypeScript"
+  - "React"
+  - "PostgreSQL"
+
+keywords_positive:
+  - "growth"
+  - "small team"
+  - "backend"
+
+keywords_negative:
+  - "10+ years"
+  - "security clearance required"
+
+locations_preferred:
+  - "New York, NY"
+  - "Remote"
+
+locations_acceptable_remote: true
+
+notes: "Prefer product companies over consulting/staffing shops."

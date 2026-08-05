@@ -1,0 +1,39 @@
+name: Discover jobs
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: discover-pipeline
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Materialize config from secrets
+        run: |
+          printf '%s' "$APP_CONFIG_YAML" > config.yaml
+          printf '%s' "$APP_PROFILE_YAML" > profile.yaml
+        env:
+          APP_CONFIG_YAML: ${{ secrets.APP_CONFIG_YAML }}
+          APP_PROFILE_YAML: ${{ secrets.APP_PROFILE_YAML }}
+
+      - name: Run discovery pipeline
+        run: python -m jobfind.pipeline
+        env:
+          PYTHONPATH: src
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}

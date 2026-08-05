@@ -149,6 +149,7 @@ activemq-data/
 
 # Environments
 .env
+.env.*
 .envrc
 .venv
 env/
@@ -156,6 +157,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# jobfind personal config (real values) — only the *.example.yaml templates are committed
+config.yaml
+profile.yaml
 
 # Spyder project settings
 .spyderproject
