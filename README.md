@@ -85,8 +85,24 @@ Actions without ever being committed.
 
 ### 5. Enable the workflow
 
-Push this repo to GitHub, then either wait for the hourly cron or trigger
+Either wait for the hourly cron or trigger
 **Actions → Discover jobs → Run workflow** manually to test end-to-end.
+
+### 6. First run — expect to run it twice
+
+The first time the pipeline runs against a fresh Sheet, every source treats
+everything it fetches as a baseline rather than "new" — it seeds the `SeenJobs`
+tab but deliberately writes **zero rows** to `Jobs`. Otherwise the very first
+run would dump a company's entire current job board, or a tracker repo's whole
+README, into your sheet as if it all just went live.
+
+So: trigger it manually (or wait for the next hourly run), confirm `SeenJobs`
+populated with rows and `Jobs` stayed empty, then trigger it a second time.
+Only the second run compares against that baseline and writes anything that's
+genuinely new and above `score_threshold` to `Jobs`. After that, the hourly
+cron behaves normally — this manual double-run is a one-time thing for a new
+Sheet (or if you ever add a new tracker/target company, only *that* source
+re-bootstraps, not the whole sheet).
 
 ## Known limitation: LinkedIn rate limits
 
