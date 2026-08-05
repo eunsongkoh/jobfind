@@ -24,11 +24,11 @@ class SeenStore:
 
     def load(self) -> None:
         values = self.worksheet.get_all_values()
-        if not values:
+        if values and values[0] == _HEADER:
+            self._rows = values[1:]
+        else:
             self.worksheet.update([_HEADER], "A1")
             self._rows = []
-            return
-        self._rows = values[1:] if values[0] == _HEADER else values
         for row in self._rows:
             if len(row) < 3:
                 continue

@@ -1,5 +1,7 @@
 import datetime
+import html
 import logging
+import re
 
 import requests
 
@@ -8,6 +10,24 @@ from ..models import Job
 from .base import BaseSource
 
 logger = logging.getLogger(__name__)
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _clean_html(raw: str | None) -> str | None:
+    """Greenhouse's `content` field is HTML (with entities double-encoded in
+    practice), unlike Lever/Ashby which expose a ready-made plain-text field."""
+    if not raw:
+        return None
+    text = _TAG_RE.sub(" ", html.unescape(raw))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or None
+
+
+def _epoch_ms_to_iso(ms: int | None) -> str | None:
+    if not ms:
+        return None
+    return datetime.datetime.fromtimestamp(ms / 1000, tz=datetime.timezone.utc).isoformat()
 
 
 class AtsSource(BaseSource):
@@ -44,7 +64,7 @@ class AtsSource(BaseSource):
                         job_url=raw["job_url"],
                         date_posted=raw.get("date_posted"),
                         date_detected=now,
-                        description=None,
+                        description=raw.get("description"),
                     )
                 )
         return jobs
@@ -71,6 +91,7 @@ class AtsSource(BaseSource):
                 "location": (job.get("location") or {}).get("name", ""),
                 "job_url": job["absolute_url"],
                 "date_posted": job.get("updated_at"),
+                "description": _clean_html(job.get("content")),
             }
             for job in data.get("jobs", [])
         ]
@@ -87,7 +108,8 @@ class AtsSource(BaseSource):
                 "title": job["text"],
                 "location": (job.get("categories") or {}).get("location", ""),
                 "job_url": job.get("hostedUrl") or job.get("applyUrl"),
-                "date_posted": None,
+                "date_posted": _epoch_ms_to_iso(job.get("createdAt")),
+                "description": job.get("descriptionPlain") or None,
             }
             for job in data
         ]
@@ -105,6 +127,7 @@ class AtsSource(BaseSource):
                 "location": job.get("location", ""),
                 "job_url": job["jobUrl"],
                 "date_posted": job.get("publishedAt"),
+                "description": job.get("descriptionPlain") or None,
             }
             for job in data.get("jobs", [])
         ]
