@@ -39,7 +39,11 @@ class OpenRouterProvider:
             timeout=60,
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        # Some free-tier reasoning models return content: null (e.g. they spent
+        # max_tokens on hidden reasoning and never emitted a final answer) without
+        # the request itself failing — coerce to "" so this always honors its str
+        # return type and downstream parsing can fail closed instead of crashing.
+        return resp.json()["choices"][0]["message"].get("content") or ""
 
 
 def get_provider(config: ScoringConfig) -> LLMProvider:

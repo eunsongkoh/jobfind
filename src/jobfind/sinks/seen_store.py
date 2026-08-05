@@ -59,10 +59,17 @@ class SeenStore:
         self._pending = []
 
     def prune(self, retention_days: int) -> None:
+        """Deletes only the stale rows in place — never clears/rewrites the tab,
+        so this can't wipe out data mid-flight (e.g. a row appended between when
+        this run loaded and when it prunes)."""
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=retention_days)
-        kept = []
-        for row in self._rows:
+        kept: list[list[str]] = []
+        stale_sheet_rows: list[int] = []
+
+        for i, row in enumerate(self._rows):
+            sheet_row = i + 2  # 1-indexed, +1 for the header row
             if len(row) < 4:
+                kept.append(row)
                 continue
             try:
                 first_seen = datetime.datetime.fromisoformat(row[3])
@@ -71,10 +78,13 @@ class SeenStore:
                 continue
             if first_seen >= cutoff:
                 kept.append(row)
+            else:
+                stale_sheet_rows.append(sheet_row)
 
-        if len(kept) == len(self._rows):
+        if not stale_sheet_rows:
             return
 
         self._rows = kept
-        self.worksheet.clear()
-        self.worksheet.update([_HEADER] + kept, "A1")
+        # Delete bottom-to-top so earlier row indices stay valid as rows shift up.
+        for sheet_row in sorted(stale_sheet_rows, reverse=True):
+            self.worksheet.delete_rows(sheet_row)

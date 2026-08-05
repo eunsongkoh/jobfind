@@ -8,7 +8,7 @@ class FakeWorksheet:
         self.rows = rows or []  # data rows only, header not included
         self.has_header = bool(rows)
         self.append_calls = []
-        self.clear_calls = 0
+        self.delete_calls = []
 
     def get_all_values(self):
         if not self.has_header:
@@ -23,10 +23,11 @@ class FakeWorksheet:
         self.append_calls.append(rows)
         self.rows.extend(rows)
 
-    def clear(self):
-        self.clear_calls += 1
-        self.has_header = False
-        self.rows = []
+    def delete_rows(self, start_index, end_index=None):
+        end_index = end_index or start_index
+        self.delete_calls.append((start_index, end_index))
+        # 1-indexed sheet rows, row 1 is the header, so data starts at row 2.
+        del self.rows[start_index - 2 : end_index - 1]
 
 
 def test_first_run_is_true_when_worksheet_empty():
@@ -87,7 +88,8 @@ def test_prune_drops_rows_older_than_retention():
 
     store.prune(retention_days=120)
 
-    assert worksheet.clear_calls == 1
+    # Only the stale row was deleted in place — no clear()/full rewrite of the tab.
+    assert worksheet.delete_calls == [(2, 2)]
     assert len(worksheet.rows) == 1
     assert worksheet.rows[0][2] == "recent-job"
 
@@ -97,3 +99,15 @@ def test_prune_drops_rows_older_than_retention():
     reloaded.load()
     assert reloaded.is_new("jobspy:linkedin", "old-job") is True
     assert reloaded.is_new("jobspy:linkedin", "recent-job") is False
+
+
+def test_prune_does_nothing_when_nothing_stale():
+    recent = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    worksheet = FakeWorksheet(rows=[["jobspy:linkedin", "new_grad", "recent-job", recent]])
+    store = SeenStore(worksheet)
+    store.load()
+
+    store.prune(retention_days=120)
+
+    assert worksheet.delete_calls == []
+    assert len(worksheet.rows) == 1
