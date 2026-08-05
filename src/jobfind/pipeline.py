@@ -89,6 +89,9 @@ def run() -> None:
     writer = SheetsWriter(sheets_client.jobs_worksheet())
     writer.ensure_header()
 
+    rejected_writer = SheetsWriter(sheets_client.rejected_worksheet())
+    rejected_writer.ensure_header()
+
     jobs = _fetch_all(config)
     new_jobs = _dedup(jobs, seen_store)
     logger.info("new_jobs=%d", len(new_jobs))
@@ -97,11 +100,15 @@ def run() -> None:
     scored = [
         score_job(job, profile, provider, max_tokens=config.scoring.max_tokens) for job in new_jobs
     ]
+    for sj in scored:
+        seen_store.record_score(sj.job.source, sj.job.id, score=sj.score, confidence=sj.confidence, rationale=sj.rationale)
 
     matches = [sj for sj in scored if sj.score >= config.scoring.score_threshold]
-    logger.info("scored=%d matches=%d", len(scored), len(matches))
+    rejected = [sj for sj in scored if sj.score < config.scoring.score_threshold]
+    logger.info("scored=%d matches=%d rejected=%d", len(scored), len(matches), len(rejected))
 
     writer.append_rows(matches)
+    rejected_writer.append_rows(rejected)
 
     seen_store.flush()
     seen_store.prune(config.dedup.retention_days)

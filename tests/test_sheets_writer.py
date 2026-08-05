@@ -24,7 +24,7 @@ class FakeWorksheet:
         self.rows.extend(rows)
 
 
-def _scored_job(job_overrides=None, score=88, rationale="Strong match") -> ScoredJob:
+def _scored_job(job_overrides=None, score=88, confidence=80, rationale="Strong match") -> ScoredJob:
     job_defaults = dict(
         id="1",
         source="test",
@@ -38,7 +38,7 @@ def _scored_job(job_overrides=None, score=88, rationale="Strong match") -> Score
         description="A great role doing great things.",
     )
     job_defaults.update(job_overrides or {})
-    return ScoredJob(job=Job(**job_defaults), score=score, rationale=rationale)
+    return ScoredJob(job=Job(**job_defaults), score=score, confidence=confidence, rationale=rationale)
 
 
 def test_ensure_header_writes_when_sheet_blank():
@@ -76,6 +76,7 @@ def test_append_rows_includes_link_rationale_description_date_posted():
     assert as_dict["description"] == "A great role doing great things."
     assert as_dict["date_posted"] == "2026-08-01T00:00:00+00:00"
     assert as_dict["score"] == 88
+    assert as_dict["confidence"] == 80
 
 
 def test_append_rows_handles_missing_description_and_date_posted():

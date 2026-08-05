@@ -2,7 +2,7 @@ import datetime
 
 import gspread
 
-_HEADER = ["source", "track", "job_id", "first_seen"]
+_HEADER = ["source", "track", "job_id", "first_seen", "score", "confidence", "rationale"]
 
 
 class SeenStore:
@@ -21,6 +21,7 @@ class SeenStore:
         self._seen: set[tuple[str, str]] = set()
         self._sources_with_rows: set[str] = set()
         self._pending: list[list[str]] = []
+        self._pending_by_key: dict[tuple[str, str], list[str]] = {}
 
     def load(self) -> None:
         values = self.worksheet.get_all_values()
@@ -47,9 +48,23 @@ class SeenStore:
             return
         self._seen.add((source, job_id))
         self._sources_with_rows.add(source)
-        self._pending.append(
-            [source, track, job_id, datetime.datetime.now(datetime.timezone.utc).isoformat()]
-        )
+        row = [source, track, job_id, datetime.datetime.now(datetime.timezone.utc).isoformat(), "", "", ""]
+        self._pending.append(row)
+        self._pending_by_key[(source, job_id)] = row
+
+    def record_score(self, source: str, job_id: str, *, score: int, confidence: int, rationale: str) -> None:
+        """Fills in the score/confidence/rationale columns of a row already
+        written by mark_seen() for this run, once scoring has actually run —
+        called for every scored job, not just ones that clear score_threshold,
+        so SeenJobs shows why a job was rejected as well as accepted. A no-op
+        if the row was already flushed to the sheet or never marked this run
+        (e.g. a bootstrap-seeded job, which is never scored)."""
+        row = self._pending_by_key.get((source, job_id))
+        if row is None:
+            return
+        row[4] = str(score)
+        row[5] = str(confidence)
+        row[6] = rationale
 
     def flush(self) -> None:
         if not self._pending:

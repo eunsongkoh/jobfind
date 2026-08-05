@@ -6,4 +6,5 @@ PyYAML
 pydantic>=2
 gspread>=6
 google-auth
+google-genai
 pytest

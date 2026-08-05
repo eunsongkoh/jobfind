@@ -1,6 +1,6 @@
 from jobfind.config import Profile
 from jobfind.models import Job
-from jobfind.scoring.scorer import score_job
+from jobfind.scoring.scorer import _build_user_prompt, score_job
 
 
 class FakeProvider:
@@ -8,7 +8,7 @@ class FakeProvider:
         self.response = response
         self.exc = exc
 
-    def complete(self, system_prompt, user_prompt, *, temperature, max_tokens):
+    def complete(self, system_prompt, user_prompt, *, temperature, max_tokens, response_format=None):
         if self.exc:
             raise self.exc
         return self.response
@@ -83,3 +83,35 @@ def test_score_is_clamped_to_0_100():
     scored = score_job(_job(), _profile(), provider)
 
     assert scored.score == 100
+
+
+def test_parses_full_structured_response_with_confidence():
+    provider = FakeProvider(response='{"score": 72, "confidence": 60, "reason": "Decent overlap in skills"}')
+
+    scored = score_job(_job(), _profile(), provider)
+
+    assert scored.score == 72
+    assert scored.confidence == 60
+    assert scored.rationale == "Decent overlap in skills"
+
+
+def test_confidence_defaults_to_zero_when_absent_from_loose_json():
+    provider = FakeProvider(response='{"score": 65, "reason": "no confidence key here"}')
+
+    scored = score_job(_job(), _profile(), provider)
+
+    assert scored.confidence == 0
+
+
+def test_prompt_includes_recommendation_mode():
+    profile = Profile(role_target=["Software Engineer"], skills=["Python"], recommendation_mode="broad")
+
+    prompt = _build_user_prompt(_job(), profile)
+
+    assert "Recommendation Mode:\nbroad" in prompt
+
+
+def test_prompt_defaults_recommendation_mode_to_personalized():
+    prompt = _build_user_prompt(_job(), _profile())
+
+    assert "Recommendation Mode:\npersonalized" in prompt

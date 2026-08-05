@@ -36,6 +36,8 @@ class JobSpySource(BaseSource):
                     hours_old=cfg.hours_old,
                     country_indeed=cfg.country_indeed,
                     job_type=self.track_def.jobspy_job_type,
+                    linkedin_fetch_description=True,
+                    description_format="markdown",
                 )
             except Exception:
                 logger.exception("jobspy site '%s' failed, skipping", site)

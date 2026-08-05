@@ -57,6 +57,51 @@ def test_mark_seen_then_is_new_returns_false():
     assert store.is_new("jobspy:linkedin", "abc") is False
 
 
+def test_record_score_fills_in_pending_row_for_rejected_and_accepted_jobs():
+    worksheet = FakeWorksheet()
+    store = SeenStore(worksheet)
+    store.load()
+
+    store.mark_seen("jobspy:linkedin", "new_grad", "rejected-job")
+    store.mark_seen("jobspy:linkedin", "new_grad", "accepted-job")
+    store.record_score("jobspy:linkedin", "rejected-job", score=20, confidence=90, rationale="Not a fit")
+    store.record_score("jobspy:linkedin", "accepted-job", score=85, confidence=70, rationale="Strong match")
+    store.flush()
+
+    (rows,) = worksheet.append_calls
+    as_dict = {row[2]: dict(zip(_HEADER, row)) for row in rows}
+    assert as_dict["rejected-job"]["score"] == "20"
+    assert as_dict["rejected-job"]["confidence"] == "90"
+    assert as_dict["rejected-job"]["rationale"] == "Not a fit"
+    assert as_dict["accepted-job"]["score"] == "85"
+
+
+def test_record_score_is_noop_for_unmarked_job():
+    store = SeenStore(FakeWorksheet())
+    store.load()
+
+    # Bootstrap-seeded jobs never get scored — record_score should not raise
+    # or fabricate a row if mark_seen was never called for this key.
+    store.record_score("jobspy:linkedin", "never-marked", score=50, confidence=50, rationale="n/a")
+
+    assert store._pending == []
+
+
+def test_bootstrap_job_row_has_empty_score_columns():
+    worksheet = FakeWorksheet()
+    store = SeenStore(worksheet)
+    store.load()
+
+    store.mark_seen("jobspy:linkedin", "new_grad", "bootstrap-job")
+    store.flush()
+
+    (rows,) = worksheet.append_calls
+    as_dict = dict(zip(_HEADER, rows[0]))
+    assert as_dict["score"] == ""
+    assert as_dict["confidence"] == ""
+    assert as_dict["rationale"] == ""
+
+
 def test_flush_appends_only_pending_rows():
     worksheet = FakeWorksheet()
     store = SeenStore(worksheet)

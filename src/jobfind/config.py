@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -39,10 +40,12 @@ class DedupConfig(BaseModel):
 
 
 class ScoringConfig(BaseModel):
-    provider: str = "openrouter"
+    provider: str = "google"
     model: str
     score_threshold: int = 70
-    api_base: str = "https://openrouter.ai/api/v1"
+    # None = provider-specific default (e.g. GoogleAIProvider's own default
+    # base_url) — only set this to override that default.
+    api_base: str | None = None
     max_tokens: int = 200
 
 
@@ -50,6 +53,7 @@ class SheetsConfig(BaseModel):
     sheet_id: str
     jobs_worksheet: str = "Jobs"
     seen_worksheet: str = "SeenJobs"
+    rejected_worksheet: str = "RejectedJobs"
 
 
 class AppConfig(BaseModel):
@@ -64,6 +68,11 @@ class AppConfig(BaseModel):
 
 
 class Profile(BaseModel):
+    # "personalized" = precise, selective recommendations weighted toward stated
+    # preferences. "broad" = high-recall, favors transferable-skill/potential fit
+    # over exact preference alignment. See scoring/scorer.py's system prompt for
+    # how each mode changes the LLM's scoring behavior.
+    recommendation_mode: Literal["personalized", "broad"] = "personalized"
     role_target: list[str] = Field(default_factory=list)
     graduation_date: str | None = None
     skills: list[str] = Field(default_factory=list)
