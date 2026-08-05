@@ -30,6 +30,23 @@ def _epoch_ms_to_iso(ms: int | None) -> str | None:
     return datetime.datetime.fromtimestamp(ms / 1000, tz=datetime.timezone.utc).isoformat()
 
 
+def _lever_description(job: dict) -> str | None:
+    """Lever splits a posting's body across descriptionPlain (intro), lists (named
+    sections like Requirements/Responsibilities, HTML content), and additionalPlain
+    (closing/benefits) — descriptionPlain alone is usually just a one-paragraph teaser."""
+    parts = []
+    if job.get("descriptionPlain"):
+        parts.append(job["descriptionPlain"].strip())
+    for section in job.get("lists") or []:
+        text = section.get("text") or ""
+        content = _clean_html(section.get("content"))
+        if content:
+            parts.append(f"{text}: {content}" if text else content)
+    if job.get("additionalPlain"):
+        parts.append(job["additionalPlain"].strip())
+    return "\n\n".join(p for p in parts if p) or None
+
+
 class AtsSource(BaseSource):
     """Direct polling of Greenhouse/Lever/Ashby public job-board JSON APIs for a
     configurable target-company list.
@@ -109,7 +126,7 @@ class AtsSource(BaseSource):
                 "location": (job.get("categories") or {}).get("location", ""),
                 "job_url": job.get("hostedUrl") or job.get("applyUrl"),
                 "date_posted": _epoch_ms_to_iso(job.get("createdAt")),
-                "description": job.get("descriptionPlain") or None,
+                "description": _lever_description(job),
             }
             for job in data
         ]

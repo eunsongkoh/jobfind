@@ -19,6 +19,9 @@ class SheetsClient:
     def seen_worksheet(self) -> gspread.Worksheet:
         return self._get_or_create(self.config.seen_worksheet)
 
+    def rejected_worksheet(self) -> gspread.Worksheet:
+        return self._get_or_create(self.config.rejected_worksheet)
+
     def _get_or_create(self, title: str) -> gspread.Worksheet:
         try:
             return self.spreadsheet.worksheet(title)

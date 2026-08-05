@@ -49,7 +49,8 @@ jobspy:
 
 # Direct ATS polling for specific companies. Empty by default — add entries as you like.
 # identifier is the last path segment of the company's public careers URL.
-target_companies: []
+# Remove [] and add entries to enable ATS polling for specific companies. 
+target_companies: [] 
 # - name: "Stripe"
 #   ats: greenhouse
 #   identifier: "stripe"        # boards.greenhouse.io/stripe
@@ -63,12 +64,19 @@ target_companies: []
 dedup:
   retention_days: 120
 
+# NOTE: the free Gemini API tier (GOOGLE_AI_API_KEY from aistudio.google.com)
+# lets Google use prompts/outputs — everything in profile.yaml + every job
+# description scored — to improve their products. Not private like a paid
+# tier. See README.md's "Gemini free-tier data sharing" before adding
+# anything sensitive to profile.yaml's `notes`.
 scoring:
-  provider: openrouter
-  model: "openai/gpt-oss-20b:free"    # free-tier model slugs rotate — check https://openrouter.ai/models
+  provider: google
+  model: "gemini-3.1-flash-lite"    # check current free-tier limits: https://ai.google.dev/gemini-api/docs/rate-limits
   score_threshold: 70
+  max_tokens: 1000
 
 sheets:
   sheet_id: "<google-sheet-id-from-the-sheet-url>"
   jobs_worksheet: "Jobs"
   seen_worksheet: "SeenJobs"
+  rejected_worksheet: "RejectedJobs"

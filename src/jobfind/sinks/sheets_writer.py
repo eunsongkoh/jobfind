@@ -2,7 +2,18 @@ import gspread
 
 from ..models import ScoredJob
 
-_HEADER = ["title", "company", "location", "link", "date_detected", "description", "date_posted", "score", "rationale"]
+_HEADER = [
+    "title",
+    "company",
+    "location",
+    "link",
+    "date_detected",
+    "description",
+    "date_posted",
+    "score",
+    "confidence",
+    "rationale",
+]
 
 _DESCRIPTION_LIMIT = 3000
 
@@ -16,8 +27,10 @@ def _truncate(text: str | None, limit: int = _DESCRIPTION_LIMIT) -> str:
 
 
 class SheetsWriter:
-    """Writes matched jobs to the 'Jobs' worksheet tab. Takes only plain ScoredJob
-    objects — no knowledge of which source or LLM provider produced them."""
+    """Writes scored jobs to a worksheet tab. Takes only plain ScoredJob objects —
+    no knowledge of which source or LLM provider produced them — so the same
+    writer works for both the 'Jobs' (accepted) and 'RejectedJobs' tabs; the
+    caller decides which ScoredJobs go where and which worksheet to point it at."""
 
     def __init__(self, worksheet: gspread.Worksheet):
         self.worksheet = worksheet
@@ -40,6 +53,7 @@ class SheetsWriter:
                 _truncate(sj.job.description),
                 sj.job.date_posted or "",
                 sj.score,
+                sj.confidence,
                 sj.rationale,
             ]
             for sj in scored_jobs

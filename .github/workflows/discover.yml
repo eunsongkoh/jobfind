@@ -2,7 +2,11 @@ name: Discover jobs
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    # Run hourly at minute 17 instead of minute 0 to reduce GitHub Actions
+    # scheduling delays — the top of the hour is high-traffic across all
+    # scheduled workflows, so GitHub's best-effort scheduler is more likely
+    # to delay or skip runs there.
+    - cron: "17 * * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -35,5 +39,5 @@ jobs:
         run: python -m jobfind.pipeline
         env:
           PYTHONPATH: src
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}

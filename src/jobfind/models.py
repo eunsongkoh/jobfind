@@ -21,4 +21,5 @@ class Job:
 class ScoredJob:
     job: Job
     score: int
+    confidence: int
     rationale: str

@@ -5,6 +5,11 @@
 # judge job relevance. It must never contain contact info, resume content, or anything
 # used to apply to jobs — that lives in a separate, private vault outside this repo.
 
+# "personalized" = selective, weighted heavily toward the preferences below.
+# "broad" = higher recall, favors transferable skills/potential fit even when
+# preferences aren't a close match.
+recommendation_mode: personalized
+
 role_target:
   - "Software Engineer"
   - "Backend Engineer"
