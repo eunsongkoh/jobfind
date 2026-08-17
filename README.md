@@ -4,6 +4,7 @@ Automated job-discovery pipeline: finds new-grad software engineering postings
 (and, optionally, internships / mid-level roles) within hours of going live,
 scores them against a personal profile with an LLM, and writes only the good
 matches to a Google Sheet. Runs hourly on GitHub Actions (configurable)
+Fork repo for own use. 
 
 ## How it works
 
