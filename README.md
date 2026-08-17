@@ -3,10 +3,7 @@
 Automated job-discovery pipeline: finds new-grad software engineering postings
 (and, optionally, internships / mid-level roles) within hours of going live,
 scores them against a personal profile with an LLM, and writes only the good
-matches to a Google Sheet. Runs hourly on GitHub Actions — no laptop required.
-
-**Scope**: discovery and scoring only. There is no resume content or
-application-answering logic here — that lives in a separate, private repo.
+matches to a Google Sheet. Runs hourly on GitHub Actions (configurable)
 
 ## How it works
 
