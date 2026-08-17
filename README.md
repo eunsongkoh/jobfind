@@ -213,21 +213,6 @@ different model, double-check it supports `minimal` (some models default to
 thinking *on* and don't allow disabling it) before assuming this still
 applies.
 
-## Testing a scoring/prompt change locally
-
-`scripts/smoke_test_scoring.py` makes one real Google AI (Gemini) call —
-using your actual `config.yaml`/`profile.yaml` — against a hardcoded sample
-job, and prints the rendered prompt, the `response_format` schema sent, the
-raw model response text, and the parsed `score`/`confidence`/`rationale`. Use
-it to sanity-check a prompt, schema, or model change before it runs against
-real postings:
-
-```bash
-GOOGLE_AI_API_KEY=... PYTHONPATH=src python scripts/smoke_test_scoring.py
-```
-
-It's a manual debugging tool, not part of the pytest suite.
-
 ## Adding a new discovery source
 
 Implement `BaseSource.fetch()` in one new file under `src/jobfind/sources/`,
