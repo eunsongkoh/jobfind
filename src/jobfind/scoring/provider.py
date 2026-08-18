@@ -202,11 +202,15 @@ class OpenAICompatibleProvider:
 
 class FallbackProvider:
     """Tries `primary` first; only calls `secondary` once primary's own
-    retries are exhausted (e.g. Gemini's daily/RPM quota)."""
+    retries are exhausted (e.g. Gemini's daily/RPM quota). Once primary fails
+    once, it's assumed exhausted for the rest of this provider's lifetime
+    (one pipeline run) — a daily quota won't clear mid-run, so retrying
+    primary on every subsequent call would just burn time for no benefit."""
 
     def __init__(self, primary: LLMProvider, secondary: LLMProvider):
         self.primary = primary
         self.secondary = secondary
+        self._primary_exhausted = False
 
     def complete(
         self,
@@ -217,23 +221,26 @@ class FallbackProvider:
         max_tokens: int = 200,
         response_format: dict | None = None,
     ) -> str:
-        try:
-            return self.primary.complete(
-                system_prompt,
-                user_prompt,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format=response_format,
-            )
-        except Exception as error:
-            logger.warning("primary provider exhausted (%s), falling back", error)
-            return self.secondary.complete(
-                system_prompt,
-                user_prompt,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format=response_format,
-            )
+        if not self._primary_exhausted:
+            try:
+                return self.primary.complete(
+                    system_prompt,
+                    user_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format=response_format,
+                )
+            except Exception as error:
+                logger.warning("primary provider exhausted (%s), falling back for remainder of run", error)
+                self._primary_exhausted = True
+
+        return self.secondary.complete(
+            system_prompt,
+            user_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
 
 
 def get_provider(config: ScoringConfig) -> LLMProvider:

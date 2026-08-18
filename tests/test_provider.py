@@ -228,6 +228,19 @@ def test_fallback_provider_forwards_identical_arguments_to_secondary():
     assert secondary.last_call == ("sys prompt", "user prompt", 0.0, 500, schema)
 
 
+def test_fallback_provider_stops_retrying_primary_after_first_failure():
+    primary = _StubProvider(error=RuntimeError("exhausted"))
+    secondary = _StubProvider(result="secondary-output")
+    provider = FallbackProvider(primary, secondary)
+
+    for _ in range(3):
+        result = provider.complete("system", "user")
+        assert result == "secondary-output"
+
+    assert primary.calls == 1
+    assert secondary.calls == 3
+
+
 def test_fallback_provider_raises_if_secondary_also_fails():
     primary = _StubProvider(error=RuntimeError("primary down"))
     secondary = _StubProvider(error=RuntimeError("secondary down"))
