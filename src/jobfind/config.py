@@ -47,6 +47,13 @@ class ScoringConfig(BaseModel):
     # base_url) — only set this to override that default.
     api_base: str | None = None
     max_tokens: int = 200
+    # Optional secondary provider, used only once the primary's own retries
+    # are exhausted (e.g. a Gemini rate limit). Leave fallback_provider unset
+    # to keep today's Gemini-only behavior.
+    fallback_provider: str | None = None
+    fallback_model: str | None = None
+    fallback_api_base: str | None = None
+    fallback_api_key: str | None = None
 
 
 class SheetsConfig(BaseModel):
@@ -80,6 +87,10 @@ class Profile(BaseModel):
     keywords_negative: list[str] = Field(default_factory=list)
     locations_preferred: list[str] = Field(default_factory=list)
     locations_acceptable_remote: bool = True
+    # False = the candidate is not a US citizen. Only relevant when config.locations
+    # targets the US — gates whether description_fails() checks US-specific
+    # sponsorship/clearance language (see filters.py).
+    us_citizen: bool = True
     notes: str | None = None
 
 

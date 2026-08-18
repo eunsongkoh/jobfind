@@ -8,6 +8,7 @@ from typing import Protocol
 import httpx
 from google import genai
 from google.genai import types
+from openai import OpenAI
 
 from ..config import ScoringConfig
 
@@ -145,11 +146,110 @@ class GoogleAIProvider:
         raise last_error
 
 
+class OpenAICompatibleProvider:
+    def __init__(self, api_key: str, model: str, base_url: str):
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.model = model
+
+    def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        temperature: float = 0.0,
+        max_tokens: int = 200,
+        response_format: dict | None = None,
+    ) -> str:
+        kwargs = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if response_format is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "score_response", "schema": response_format},
+            }
+
+        completion = self._create_with_retry(kwargs)
+        return completion.choices[0].message.content or ""
+
+    def _create_with_retry(self, kwargs: dict):
+        last_error: Exception | None = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                return self.client.chat.completions.create(**kwargs)
+            except Exception as error:
+                if not _is_retryable(error) or attempt == _MAX_RETRIES:
+                    raise
+                delay = _retry_delay_seconds(error, attempt, _RETRY_BASE_DELAY_SECONDS, _RETRY_MAX_DELAY_SECONDS)
+                logger.warning(
+                    "fallback scoring call failed (%s), retrying in %.1fs [attempt %d/%d]",
+                    _status_code_of(error) or type(error).__name__,
+                    delay,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                )
+                last_error = error
+                time.sleep(delay)
+        # Unreachable: the loop above always returns or raises.
+        raise last_error
+
+
+class FallbackProvider:
+    """Tries `primary` first; only calls `secondary` once primary's own
+    retries are exhausted (e.g. Gemini's daily/RPM quota)."""
+
+    def __init__(self, primary: LLMProvider, secondary: LLMProvider):
+        self.primary = primary
+        self.secondary = secondary
+
+    def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        temperature: float = 0.0,
+        max_tokens: int = 200,
+        response_format: dict | None = None,
+    ) -> str:
+        try:
+            return self.primary.complete(
+                system_prompt,
+                user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
+        except Exception as error:
+            logger.warning("primary provider exhausted (%s), falling back", error)
+            return self.secondary.complete(
+                system_prompt,
+                user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
+
+
 def get_provider(config: ScoringConfig) -> LLMProvider:
-    if config.provider == "google":
-        return GoogleAIProvider(
-            api_key=os.environ["GOOGLE_AI_API_KEY"],
-            model=config.model,
-            base_url=config.api_base,
+    if config.provider != "google":
+        raise ValueError(f"unknown scoring provider '{config.provider}'")
+
+    provider: LLMProvider = GoogleAIProvider(
+        api_key=os.environ["GOOGLE_AI_API_KEY"],
+        model=config.model,
+        base_url=config.api_base,
+    )
+    if config.fallback_provider == "groq":
+        fallback = OpenAICompatibleProvider(
+            api_key=config.fallback_api_key,
+            model=config.fallback_model,
+            base_url=config.fallback_api_base,
         )
-    raise ValueError(f"unknown scoring provider '{config.provider}'")
+        return FallbackProvider(provider, fallback)
+    return provider

@@ -7,4 +7,5 @@ pydantic>=2
 gspread>=6
 google-auth
 google-genai
+openai
 pytest

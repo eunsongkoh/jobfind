@@ -39,4 +39,9 @@ locations_preferred:
 
 locations_acceptable_remote: true
 
+# Set to false if you require visa/work-authorization sponsorship — gates
+# US-specific sponsorship/clearance description filtering (only checked when
+# config.locations also targets the US).
+us_citizen: true
+
 notes: "Prefer product companies over consulting/staffing shops."

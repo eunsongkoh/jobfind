@@ -90,6 +90,12 @@ contact info, no resume content.
 > free-tier data sharing" under Known limitations below for the full note
 > before putting anything sensitive in `profile.yaml`.
 
+`config.yaml`'s `scoring` block also accepts four optional `fallback_*`
+fields (`fallback_provider`, `fallback_model`, `fallback_api_base`,
+`fallback_api_key`) for a secondary LLM provider that only gets called once
+the primary (Gemini) exhausts its own retries — see "Swapping LLM providers"
+below. Omit all four to keep today's Gemini-only behavior.
+
 `profile.yaml`'s `recommendation_mode` controls how selective scoring is:
 `personalized` (default) weighs your stated preferences (locations, remote,
 positive/negative keywords, notes) heavily and is more selective; `broad`
@@ -211,6 +217,25 @@ different model, double-check it supports `minimal` (some models default to
 thinking *on* and don't allow disabling it) before assuming this still
 applies.
 
+Setting `scoring.fallback_provider` (see "Swapping LLM providers" below)
+gives a way to survive a 429 mid-run instead of the call failing outright
+(`rationale: provider_error`).
+
+## Testing a scoring/prompt change locally
+
+`scripts/smoke_test_scoring.py` makes one real Google AI (Gemini) call —
+using your actual `config.yaml`/`profile.yaml` — against a hardcoded sample
+job, and prints the rendered prompt, the `response_format` schema sent, the
+raw model response text, and the parsed `score`/`confidence`/`rationale`. Use
+it to sanity-check a prompt, schema, or model change before it runs against
+real postings:
+
+```bash
+GOOGLE_AI_API_KEY=... PYTHONPATH=src python scripts/smoke_test_scoring.py
+```
+
+It's a manual debugging tool, not part of the pytest suite.
+
 ## Adding a new discovery source
 
 Implement `BaseSource.fetch()` in one new file under `src/jobfind/sources/`,
@@ -231,6 +256,18 @@ JSON Schema natively, no translation needed) and reading the result back via
 To add another provider, add a class implementing `LLMProvider`'s
 `complete()` method in `provider.py` and one branch in `get_provider()`. No
 other file references a specific provider directly.
+
+`OpenAICompatibleProvider` and `FallbackProvider` are the first real example
+of this. Set `scoring.fallback_provider: groq` (plus
+`fallback_model`/`fallback_api_base`/`fallback_api_key`) in `config.yaml` and
+`get_provider()` wraps `GoogleAIProvider` in a `FallbackProvider` — a
+[Groq](https://console.groq.com/) call (`openai/gpt-oss-120b` by default,
+`https://api.groq.com/openai/v1`) only happens once Gemini's own 5 retries
+are exhausted. The fallback sees the exact same system/user prompt and
+`ScoreResponse` schema Gemini would have, and its output is parsed by the
+same `_parse_response()` chain — nothing provider-specific in prompt-building
+or parsing. Leave `fallback_provider` unset to keep today's Gemini-only
+behavior.
 
 ## Running tests
 

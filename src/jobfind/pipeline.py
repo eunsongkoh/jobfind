@@ -5,8 +5,8 @@ import sys
 from collections import defaultdict
 
 from .config import AppConfig, load_config, load_profile
-from .filters import apply_filters
-from .models import Job
+from .filters import apply_filters, prefilter_job, targets_us_location
+from .models import Job, ScoredJob
 from .scoring.provider import get_provider
 from .scoring.scorer import score_job
 from .sinks.seen_store import SeenStore
@@ -96,9 +96,22 @@ def run() -> None:
     new_jobs = _dedup(jobs, seen_store)
     logger.info("new_jobs=%d", len(new_jobs))
 
+    check_sponsorship = not profile.us_citizen and targets_us_location(config.locations)
+
+    to_score: list[Job] = []
+    prefiltered: list[ScoredJob] = []
+    for job in new_jobs:
+        track_def = config.tracks.definitions.get(job.track)
+        rejected = prefilter_job(job, track_def, check_sponsorship=check_sponsorship)
+        if rejected is not None:
+            prefiltered.append(rejected)
+        else:
+            to_score.append(job)
+    logger.info("prefiltered=%d to_score=%d", len(prefiltered), len(to_score))
+
     provider = get_provider(config.scoring)
-    scored = [
-        score_job(job, profile, provider, max_tokens=config.scoring.max_tokens) for job in new_jobs
+    scored = prefiltered + [
+        score_job(job, profile, provider, max_tokens=config.scoring.max_tokens) for job in to_score
     ]
     for sj in scored:
         seen_store.record_score(sj.job.source, sj.job.id, score=sj.score, confidence=sj.confidence, rationale=sj.rationale)
