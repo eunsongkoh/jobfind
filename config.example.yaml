@@ -10,7 +10,7 @@ tracks:
     new_grad:
       jobspy_job_type: fulltime
       keywords_include: ["software engineer", "new grad", "swe", "backend", "full stack"]
-      keywords_exclude: ["senior", "staff", "principal"]
+      keywords_exclude: ["senior", "staff", "principal", "lead", "director", "pharmacy", "pharmacist", "clinical", "nursing", "tax", "audit", "accounting", "financial representative", "sales", "marketing", "retail", "representative", "construction", "human resources", "administrative", "legal", "paralegal"]
       github_trackers:
         - name: simplify_new_grad
           url: "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md"
@@ -20,7 +20,7 @@ tracks:
     internship:
       jobspy_job_type: internship
       keywords_include: ["intern", "internship"]
-      keywords_exclude: []
+      keywords_exclude: ["senior", "staff", "principal", "lead", "director", "pharmacy", "pharmacist", "clinical", "nursing", "tax", "audit", "accounting", "financial representative", "sales", "marketing", "retail", "representative", "construction", "human resources", "administrative", "legal", "paralegal"]
       github_trackers:
         - name: simplify_internships
           url: "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/README.md"
@@ -74,6 +74,12 @@ scoring:
   model: "gemini-3.1-flash-lite"    # check current free-tier limits: https://ai.google.dev/gemini-api/docs/rate-limits
   score_threshold: 70
   max_tokens: 1000
+  # Optional fallback, only called once Gemini's own 5 retries are exhausted
+  # (rate limit or outage). Omit all four fallback_* keys to stay Gemini-only.
+  # fallback_provider: groq
+  # fallback_model: "openai/gpt-oss-120b"
+  # fallback_api_base: "https://api.groq.com/openai/v1"
+  # fallback_api_key: "<your Groq API key>"
 
 sheets:
   sheet_id: "<google-sheet-id-from-the-sheet-url>"
