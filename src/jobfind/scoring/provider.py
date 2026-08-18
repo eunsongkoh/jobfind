@@ -22,6 +22,16 @@ _RETRY_BASE_DELAY_SECONDS = 2.0
 _RETRY_MAX_DELAY_SECONDS = 60.0
 _REQUESTS_PER_MINUTE = 14
 
+# Groq limits for the currently-configured fallback model (openai/gpt-oss-120b):
+# 30 RPM / 8,000 TPM. TPM is the binding constraint given gpt-oss's heavy internal
+# reasoning-token overhead — adjust if the fallback model changes.
+_GROQ_REQUESTS_PER_MINUTE = 30
+_GROQ_TOKENS_PER_MINUTE = 8000
+# ~2,600 observed in production (real profile + job description prompts, not a
+# trivial test prompt) — used only until real usage samples take over via the
+# moving average in _TokenRateLimiter.
+_GROQ_INITIAL_TOKEN_ESTIMATE = 2600
+
 
 def _status_code_of(error: Exception) -> int | None:
     return getattr(error, "status_code", None) or getattr(error, "code", None)
@@ -68,6 +78,45 @@ class _RateLimiter:
                 self._request_times.popleft()
 
         self._request_times.append(time.monotonic())
+
+
+class _TokenRateLimiter:
+    """Blocks until issuing another request keeps the caller under
+    `requests_per_minute` AND `tokens_per_minute` in any trailing 60s window.
+    Uses an exponential moving average of each call's *actual* token usage
+    (read back from the response) to estimate the next call's cost — this
+    tracks real throughput closely instead of assuming worst-case max_tokens
+    every time, which would throttle far more aggressively than necessary."""
+
+    def __init__(self, requests_per_minute: int, tokens_per_minute: int, initial_estimate: int):
+        self.requests_per_minute = requests_per_minute
+        self.tokens_per_minute = tokens_per_minute
+        self._avg_tokens = initial_estimate
+        self._events: deque[tuple[float, int]] = deque()
+
+    def _prune(self, now: float) -> None:
+        while self._events and now - self._events[0][0] >= 60:
+            self._events.popleft()
+
+    def wait(self) -> None:
+        now = time.monotonic()
+        self._prune(now)
+        while self._events and (
+            len(self._events) >= self.requests_per_minute
+            or sum(tokens for _, tokens in self._events) + self._avg_tokens > self.tokens_per_minute
+        ):
+            sleep_for = 60 - (now - self._events[0][0])
+            if sleep_for > 0:
+                logger.info("groq rate limit throttle: sleeping %.1fs", sleep_for)
+                time.sleep(sleep_for)
+            now = time.monotonic()
+            self._prune(now)
+
+    def record(self, tokens: int | None) -> None:
+        used = tokens if tokens is not None else self._avg_tokens
+        self._events.append((time.monotonic(), used))
+        if tokens is not None:
+            self._avg_tokens = int(0.3 * tokens + 0.7 * self._avg_tokens)
 
 
 def _retry_delay_seconds(error: Exception, attempt: int, base_delay: float, max_delay: float) -> float:
@@ -148,8 +197,13 @@ class GoogleAIProvider:
 
 class OpenAICompatibleProvider:
     def __init__(self, api_key: str, model: str, base_url: str):
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        # max_retries=0: the openai SDK otherwise retries 429s internally before we
+        # ever see them, which bypasses our rate limiter's pacing entirely.
+        self.client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
         self.model = model
+        self._rate_limiter = _TokenRateLimiter(
+            _GROQ_REQUESTS_PER_MINUTE, _GROQ_TOKENS_PER_MINUTE, _GROQ_INITIAL_TOKEN_ESTIMATE
+        )
 
     def complete(
         self,
@@ -181,8 +235,9 @@ class OpenAICompatibleProvider:
     def _create_with_retry(self, kwargs: dict):
         last_error: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
+            self._rate_limiter.wait()
             try:
-                return self.client.chat.completions.create(**kwargs)
+                completion = self.client.chat.completions.create(**kwargs)
             except Exception as error:
                 if not _is_retryable(error) or attempt == _MAX_RETRIES:
                     raise
@@ -196,6 +251,10 @@ class OpenAICompatibleProvider:
                 )
                 last_error = error
                 time.sleep(delay)
+                continue
+            usage = getattr(completion, "usage", None)
+            self._rate_limiter.record(getattr(usage, "total_tokens", None) if usage else None)
+            return completion
         # Unreachable: the loop above always returns or raises.
         raise last_error
 

@@ -3,7 +3,7 @@
 Automated job-discovery pipeline: finds new-grad software engineering postings
 (and, optionally, internships / mid-level roles) within hours of going live,
 scores them against a personal profile with an LLM, and writes only the good
-matches to a Google Sheet. Runs hourly on GitHub Actions (configurable)
+matches to a Google Sheet. Runs every 2 hours on GitHub Actions (configurable)
 Fork repo for own use. 
 
 ## How it works
@@ -31,7 +31,7 @@ Fork repo for own use.
   wasn't recommended. Both tabs share the same columns — title, company,
   location, link (clickable), date detected, description, date posted, score,
   confidence, rationale.
-- **Scheduling**: `.github/workflows/discover.yml` runs the pipeline hourly via
+- **Scheduling**: `.github/workflows/discover.yml` runs the pipeline every 2 hours via
   `cron`, plus `workflow_dispatch` for manual test runs.
 
 Everything tunable — active tracks, keywords, locations, score threshold, active
@@ -127,15 +127,15 @@ Actions without ever being committed.
 
 ### 6. Enable the workflow
 
-Either wait for the hourly cron or trigger
+Either wait for the scheduled cron or trigger
 **Actions → Discover jobs → Run workflow** manually to test end-to-end.
 
 The cron schedule in `.github/workflows/discover.yml` runs at minute 17 of
-every hour (`17 * * * *`) rather than minute 0 — GitHub's scheduler is
+every 2nd hour (`17 */2 * * *`) rather than minute 0 — GitHub's scheduler is
 best-effort, and the top of the hour is high-traffic across everyone's
 scheduled workflows, so runs there are more likely to be delayed or skipped.
-Change the `17` to whatever minute you like (or a different cron expression
-entirely) if you want a different offset — it just needs to avoid `0`.
+Change the `17` to whatever minute you like, or the whole expression if you
+want a different frequency — it just needs to avoid minute `0`.
 
 ### 7. First run — expect to run it twice
 
@@ -147,7 +147,7 @@ entirely) if you want a different offset — it just needs to avoid `0`.
 - Trigger it once, confirm `SeenJobs` now has rows while `Jobs`/`RejectedJobs`
   are still empty, then trigger it again — only the second run compares
   against that baseline and writes anything genuinely new.
-- After that, the hourly cron behaves normally. This double-run is a
+- After that, the scheduled cron behaves normally. This double-run is a
   one-time thing per Sheet — adding a new tracker or target company later
   only re-bootstraps *that* source, not the whole Sheet.
 - Heads up: the same one-time re-bootstrap happens automatically whenever
@@ -160,8 +160,8 @@ entirely) if you want a different offset — it just needs to avoid `0`.
 
 **LinkedIn rate limits**
 - GitHub-hosted runners share IPs across countless workflows, so LinkedIn
-  blocks them faster than a residential IP would, especially at hourly
-  frequency.
+  blocks them faster than a residential IP would, especially at frequent
+  polling intervals.
 - Already mitigated: each site scrapes independently (one blocked site
   doesn't affect the others), `results_wanted` is conservative by default,
   and `jobspy.enabled_sites` in `config.yaml` lets you drop a

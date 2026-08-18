@@ -2,11 +2,11 @@ name: Discover jobs
 
 on:
   schedule:
-    # Run hourly at minute 17 instead of minute 0 to reduce GitHub Actions
-    # scheduling delays — the top of the hour is high-traffic across all
-    # scheduled workflows, so GitHub's best-effort scheduler is more likely
-    # to delay or skip runs there.
-    - cron: "17 * * * *"
+    # Run every 2 hours at minute 17 instead of minute 0 to reduce GitHub
+    # Actions scheduling delays — the top of the hour is high-traffic across
+    # all scheduled workflows, so GitHub's best-effort scheduler is more
+    # likely to delay or skip runs there.
+    - cron: "17 */2 * * *"
   workflow_dispatch: {}
 
 concurrency:
