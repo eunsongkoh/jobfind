@@ -1,19 +1,21 @@
 import httpx
 import pytest
 
+from jobfind.retry import QuotaExhausted
 from jobfind.scoring.provider import (
     FallbackProvider,
     GoogleAIProvider,
     OpenAICompatibleProvider,
     _RateLimiter,
+    _is_gemini_daily_quota_exhausted,
+    _is_groq_daily_quota_exhausted,
     _is_retryable,
-    _retry_delay_seconds,
 )
 
 
 class _FakeError(Exception):
-    def __init__(self, status_code=None, headers=None):
-        super().__init__("fake error")
+    def __init__(self, status_code=None, headers=None, message="fake error"):
+        super().__init__(message)
         self.status_code = status_code
         self.headers = headers or {}
 
@@ -33,20 +35,30 @@ def test_is_retryable_true_for_transport_errors():
     assert _is_retryable(httpx.ConnectError("connection refused"))
 
 
-def test_retry_delay_honors_retry_after_header():
-    error = _FakeError(status_code=429, headers={"Retry-After": "3"})
+def test_is_gemini_daily_quota_exhausted_matches_free_tier_requests_message():
+    error = _FakeError(
+        status_code=429,
+        message="Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests",
+    )
 
-    delay = _retry_delay_seconds(error, attempt=0, base_delay=2.0, max_delay=60.0)
-
-    assert delay == 3.0
+    assert _is_gemini_daily_quota_exhausted(error)
 
 
-def test_retry_delay_falls_back_to_bounded_exponential_backoff():
-    error = _FakeError(status_code=503)
+def test_is_gemini_daily_quota_exhausted_false_for_transient_rate_limit():
+    assert not _is_gemini_daily_quota_exhausted(_FakeError(status_code=429, message="please slow down"))
 
-    for attempt in range(6):
-        delay = _retry_delay_seconds(error, attempt=attempt, base_delay=2.0, max_delay=10.0)
-        assert 0 <= delay <= 10.0
+
+def test_is_groq_daily_quota_exhausted_matches_tpd_message():
+    error = _FakeError(
+        status_code=429,
+        message="Rate limit reached ... on tokens per day (TPD): Limit 200000, Used 199179",
+    )
+
+    assert _is_groq_daily_quota_exhausted(error)
+
+
+def test_is_groq_daily_quota_exhausted_false_for_transient_rate_limit():
+    assert not _is_groq_daily_quota_exhausted(_FakeError(status_code=429, message="please slow down"))
 
 
 def test_rate_limiter_throttles_once_limit_reached(monkeypatch):
@@ -122,6 +134,18 @@ def test_create_with_retry_gives_up_after_max_retries(monkeypatch):
     assert provider.client.calls == 3
 
 
+def test_create_with_retry_raises_quota_exhausted_without_retrying_on_daily_quota_error(monkeypatch):
+    monkeypatch.setattr("jobfind.scoring.provider.time.sleep", lambda s: None)
+    error = _FakeError(status_code=429, message="... generate_content_free_tier_requests ...")
+    provider = _provider_with_fake_client([error])
+
+    with pytest.raises(QuotaExhausted):
+        provider._create_with_retry({})
+
+    # No retries burned against an already-exhausted daily quota.
+    assert provider.client.calls == 1
+
+
 class _FlakyChatClient:
     def __init__(self, errors):
         self.errors = list(errors)
@@ -173,6 +197,19 @@ def test_openai_compatible_create_with_retry_raises_immediately_on_non_retryable
     provider = _openai_compatible_provider_with_fake_client([_FakeError(status_code=400)])
 
     with pytest.raises(_FakeError):
+        provider._create_with_retry({})
+
+    assert provider.client.calls == 1
+
+
+def test_openai_compatible_create_with_retry_raises_quota_exhausted_without_retrying_on_daily_quota_error(
+    monkeypatch,
+):
+    monkeypatch.setattr("jobfind.scoring.provider.time.sleep", lambda s: None)
+    error = _FakeError(status_code=429, message="... tokens per day (TPD) ...")
+    provider = _openai_compatible_provider_with_fake_client([error])
+
+    with pytest.raises(QuotaExhausted):
         provider._create_with_retry({})
 
     assert provider.client.calls == 1

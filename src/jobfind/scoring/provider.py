@@ -1,6 +1,5 @@
 import logging
 import os
-import random
 import time
 from collections import deque
 from typing import Protocol
@@ -11,6 +10,7 @@ from google.genai import types
 from openai import OpenAI
 
 from ..config import ScoringConfig
+from ..retry import retry_call, status_code_of
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +33,25 @@ _GROQ_TOKENS_PER_MINUTE = 8000
 _GROQ_INITIAL_TOKEN_ESTIMATE = 2600
 
 
-def _status_code_of(error: Exception) -> int | None:
-    return getattr(error, "status_code", None) or getattr(error, "code", None)
-
-
 def _is_retryable(error: Exception) -> bool:
     if isinstance(error, httpx.TransportError):
         return True
-    return _status_code_of(error) in _RETRYABLE_STATUS_CODES
+    return status_code_of(error) in _RETRYABLE_STATUS_CODES
+
+
+def _is_gemini_daily_quota_exhausted(error: Exception) -> bool:
+    # Google's free-tier request-count quota (as opposed to a transient
+    # per-minute rate limit) — e.g. "Quota exceeded for metric:
+    # generativelanguage.googleapis.com/generate_content_free_tier_requests".
+    return "free_tier_requests" in str(error).lower()
+
+
+def _is_groq_daily_quota_exhausted(error: Exception) -> bool:
+    # Groq's tokens/requests-per-day quota, e.g. "Rate limit reached ... on
+    # tokens per day (TPD): Limit 200000, Used 199179 ... retry in 10m19s" —
+    # far longer than our retry backoff can bridge.
+    message = str(error).lower()
+    return "tokens per day (tpd)" in message or "requests per day (rpd)" in message
 
 
 class LLMProvider(Protocol):
@@ -119,21 +130,6 @@ class _TokenRateLimiter:
             self._avg_tokens = int(0.3 * tokens + 0.7 * self._avg_tokens)
 
 
-def _retry_delay_seconds(error: Exception, attempt: int, base_delay: float, max_delay: float) -> float:
-    headers = getattr(error, "headers", None)
-    retry_after = headers.get("Retry-After") if headers is not None else None
-    if retry_after is not None:
-        try:
-            return min(float(retry_after), max_delay)
-        except ValueError:
-            pass
-
-    # Full jitter: uniform in [0, backoff] rather than backoff * [0.5, 1.5],
-    # so many jobs retrying at once after a shared 429 don't stay correlated.
-    backoff = min(base_delay * (2**attempt), max_delay)
-    return random.uniform(0, backoff)
-
-
 class GoogleAIProvider:
     def __init__(self, api_key: str, model: str, base_url: str | None = None):
         client_kwargs = {"api_key": api_key}
@@ -173,26 +169,19 @@ class GoogleAIProvider:
         return interaction.output_text or ""
 
     def _create_with_retry(self, kwargs: dict):
-        last_error: Exception | None = None
-        for attempt in range(_MAX_RETRIES + 1):
+        def _call():
             self._rate_limiter.wait()
-            try:
-                return self.client.interactions.create(**kwargs)
-            except Exception as error:
-                if not _is_retryable(error) or attempt == _MAX_RETRIES:
-                    raise
-                delay = _retry_delay_seconds(error, attempt, _RETRY_BASE_DELAY_SECONDS, _RETRY_MAX_DELAY_SECONDS)
-                logger.warning(
-                    "scoring call failed (%s), retrying in %.1fs [attempt %d/%d]",
-                    _status_code_of(error) or type(error).__name__,
-                    delay,
-                    attempt + 1,
-                    _MAX_RETRIES,
-                )
-                last_error = error
-                time.sleep(delay)
-        # Unreachable: the loop above always returns or raises.
-        raise last_error
+            return self.client.interactions.create(**kwargs)
+
+        return retry_call(
+            _call,
+            is_retryable=_is_retryable,
+            is_daily_quota_exhausted=_is_gemini_daily_quota_exhausted,
+            label="scoring call",
+            max_retries=_MAX_RETRIES,
+            base_delay=_RETRY_BASE_DELAY_SECONDS,
+            max_delay=_RETRY_MAX_DELAY_SECONDS,
+        )
 
 
 class OpenAICompatibleProvider:
@@ -233,30 +222,22 @@ class OpenAICompatibleProvider:
         return completion.choices[0].message.content or ""
 
     def _create_with_retry(self, kwargs: dict):
-        last_error: Exception | None = None
-        for attempt in range(_MAX_RETRIES + 1):
+        def _call():
             self._rate_limiter.wait()
-            try:
-                completion = self.client.chat.completions.create(**kwargs)
-            except Exception as error:
-                if not _is_retryable(error) or attempt == _MAX_RETRIES:
-                    raise
-                delay = _retry_delay_seconds(error, attempt, _RETRY_BASE_DELAY_SECONDS, _RETRY_MAX_DELAY_SECONDS)
-                logger.warning(
-                    "fallback scoring call failed (%s), retrying in %.1fs [attempt %d/%d]",
-                    _status_code_of(error) or type(error).__name__,
-                    delay,
-                    attempt + 1,
-                    _MAX_RETRIES,
-                )
-                last_error = error
-                time.sleep(delay)
-                continue
+            completion = self.client.chat.completions.create(**kwargs)
             usage = getattr(completion, "usage", None)
             self._rate_limiter.record(getattr(usage, "total_tokens", None) if usage else None)
             return completion
-        # Unreachable: the loop above always returns or raises.
-        raise last_error
+
+        return retry_call(
+            _call,
+            is_retryable=_is_retryable,
+            is_daily_quota_exhausted=_is_groq_daily_quota_exhausted,
+            label="fallback scoring call",
+            max_retries=_MAX_RETRIES,
+            base_delay=_RETRY_BASE_DELAY_SECONDS,
+            max_delay=_RETRY_MAX_DELAY_SECONDS,
+        )
 
 
 class FallbackProvider:

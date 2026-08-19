@@ -1,7 +1,22 @@
+import re
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import Profile
 from ..models import Job
+
+_INLINE_WHITESPACE_RE = re.compile(r"[ \t]+")
+_BLANK_LINES_RE = re.compile(r"\n{3,}")
+
+
+def _normalize_description(text: str) -> str:
+    """Collapses scraped-HTML whitespace padding (repeated spaces/tabs, runs
+    of blank lines) so the prompt's char budget goes toward real content
+    instead of formatting noise — this doesn't change what the description
+    says, only how many tokens it costs to say it."""
+    text = _INLINE_WHITESPACE_RE.sub(" ", text)
+    text = _BLANK_LINES_RE.sub("\n\n", text)
+    return text.strip()
 
 
 class CandidateProfile(BaseModel):
@@ -45,12 +60,13 @@ class JobPosting(BaseModel):
 
     @classmethod
     def from_job(cls, job: Job, *, max_description_chars: int = 2000) -> "JobPosting":
+        description = _normalize_description(job.description)[:max_description_chars] if job.description else None
         return cls(
             title=job.title,
             company=job.company,
             location=job.location,
             track=job.track,
-            description=job.description[:max_description_chars] if job.description else None,
+            description=description,
         )
 
 

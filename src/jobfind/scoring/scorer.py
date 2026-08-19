@@ -11,129 +11,37 @@ from .provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """You are a job recommendation engine.
+_SYSTEM_PROMPT = """You are a job recommendation engine. Estimate how likely the candidate would reasonably want to apply to this job, based on both their qualifications and preferences — not whether they are perfectly qualified.
 
-Your task is to determine how worthwhile it is to recommend a job posting to a candidate.
+Recommendation mode "personalized": prioritize precision over recall. Prefer jobs matching the candidate's stated preferences; penalize mismatched location, negative keywords, and conflicting notes.
+Recommendation mode "broad": prioritize recall over precision. Recommend jobs the candidate could reasonably want even if imperfect; weigh transferable skills; don't heavily penalize missing technologies or imperfect preference alignment.
 
-Your goal is NOT to determine whether the candidate is perfectly qualified.
+Consider: target roles, technical and transferable skills, location, remote preference, graduation date/experience level, positive and negative keywords, additional notes. Do not require every listed skill; treat equivalent technologies as transferable. If information is missing, reduce confidence rather than assuming a poor match. Never invent facts.
 
-Instead, estimate the likelihood that the candidate would reasonably want to apply for this job based on both their qualifications and preferences.
+Scoring guide: 90-100 excellent, 80-89 strong, 70-79 worth recommending, 60-69 possible, 40-59 weak, 0-39 poor.
 
-Recommendation Mode:
-
-If the recommendation mode is "personalized":
-- Prioritize precision over recall.
-- Prefer jobs that closely align with the candidate's stated preferences.
-- Penalize mismatched locations, negative keywords, and conflicting notes.
-
-If the recommendation mode is "broad":
-- Prioritize recall over precision.
-- Recommend jobs that the candidate could reasonably be interested in even if they are not perfect matches.
-- Consider transferable skills.
-- Do not heavily penalize missing technologies or imperfect preference alignment.
-
-When evaluating, consider:
-
-- Target roles
-- Technical skills
-- Transferable skills
-- Location
-- Remote preference
-- Graduation date or experience level
-- Positive keywords
-- Negative keywords
-- Additional notes
-
-Do not require every listed skill.
-
-Treat equivalent technologies as transferable when appropriate.
-
-If information is missing, reduce confidence rather than assuming a poor match.
-
-Never invent facts.
-
-Scoring Guide:
-
-90-100
-Excellent recommendation.
-
-80-89
-Strong recommendation.
-
-70-79
-Worth recommending.
-
-60-69
-Possible recommendation.
-
-40-59
-Weak recommendation.
-
-0-39
-Poor recommendation.
-
-Return ONLY valid JSON.
-
-Schema:
-
-{
-  "score": integer,
-  "confidence": integer,
-  "reason": string
-}
-
-The reason must be one sentence under 30 words and mention the strongest matching factors."""
+Return ONLY valid JSON matching this schema: {"score": integer, "confidence": integer, "reason": string}. The reason must be one sentence under 30 words citing the strongest matching factors."""
 
 _RESPONSE_FORMAT = ScoreResponse.model_json_schema()
 
-_USER_PROMPT_TEMPLATE = """
-Evaluate the following candidate against the job posting.
+_USER_PROMPT_TEMPLATE = """Evaluate the following candidate against the job posting.
 
 CANDIDATE
-
-Recommendation Mode:
-{profile.recommendation_mode}
-
-Target Roles:
-{profile.role_target}
-
-Skills:
-{profile.skills}
-
-Preferred Locations:
-{profile.locations_preferred}
-
-Remote Accepted:
-{profile.locations_acceptable_remote}
-
-Graduation Date:
-{profile.graduation_date}
-
-Positive Keywords:
-{profile.keywords_positive}
-
-Negative Keywords:
-{profile.keywords_negative}
-
-Additional Notes:
-{profile.notes}
-
-----------------------------------------
+Recommendation Mode: {profile.recommendation_mode}
+Target Roles: {profile.role_target}
+Skills: {profile.skills}
+Preferred Locations: {profile.locations_preferred}
+Remote Accepted: {profile.locations_acceptable_remote}
+Graduation Date: {profile.graduation_date}
+Positive Keywords: {profile.keywords_positive}
+Negative Keywords: {profile.keywords_negative}
+Additional Notes: {profile.notes}
 
 JOB POSTING
-
-Title:
-{job.title}
-
-Company:
-{job.company}
-
-Location:
-{job.location}
-
-Track:
-{job.track}
-
+Title: {job.title}
+Company: {job.company}
+Location: {job.location}
+Track: {job.track}
 Description:
 {job.description}
 """
@@ -185,6 +93,11 @@ def _parse_response(text: str) -> tuple[int, int, str]:
 
 
 def score_job(job: Job, profile: Profile, provider: LLMProvider, *, max_tokens: int = 200) -> ScoredJob:
+    """Never raises — a failed provider call or an unparseable/malformed
+    response both score the job as 0 rather than propagating, so one bad
+    response can't take down the whole batch (pipeline.py scores every
+    to-score job in a single comprehension; one uncaught exception there
+    would discard every already-scored job alongside it)."""
     try:
         response = provider.complete(
             _SYSTEM_PROMPT,
@@ -193,9 +106,9 @@ def score_job(job: Job, profile: Profile, provider: LLMProvider, *, max_tokens: 
             max_tokens=max_tokens,
             response_format=_RESPONSE_FORMAT,
         )
+        score, confidence, rationale = _parse_response(response)
     except Exception:
-        logger.exception("scoring call failed for job %s, scoring as 0", job.id)
+        logger.exception("scoring failed for job %s, scoring as 0", job.id)
         return ScoredJob(job=job, score=0, confidence=0, rationale="provider_error")
 
-    score, confidence, rationale = _parse_response(response)
     return ScoredJob(job=job, score=score, confidence=confidence, rationale=rationale)

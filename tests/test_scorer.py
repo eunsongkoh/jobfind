@@ -1,5 +1,6 @@
 from jobfind.config import Profile
 from jobfind.models import Job
+from jobfind.scoring import scorer
 from jobfind.scoring.scorer import _build_user_prompt, score_job
 
 
@@ -77,6 +78,24 @@ def test_provider_error_scores_zero_without_raising():
     assert scored.rationale == "provider_error"
 
 
+def test_unexpected_parse_failure_scores_zero_without_raising(monkeypatch):
+    """A malformed response that trips an exception _parse_response doesn't
+    already guard against must still be caught here — otherwise one bad
+    response aborts pipeline.py's scoring comprehension and discards every
+    already-scored job alongside it."""
+
+    def _boom(text):
+        raise RuntimeError("unexpected parse failure")
+
+    monkeypatch.setattr(scorer, "_parse_response", _boom)
+    provider = FakeProvider(response='{"score": 85, "reason": "Great fit"}')
+
+    scored = score_job(_job(), _profile(), provider)
+
+    assert scored.score == 0
+    assert scored.rationale == "provider_error"
+
+
 def test_score_is_clamped_to_0_100():
     provider = FakeProvider(response='{"score": 150, "reason": "over"}')
 
@@ -108,10 +127,10 @@ def test_prompt_includes_recommendation_mode():
 
     prompt = _build_user_prompt(_job(), profile)
 
-    assert "Recommendation Mode:\nbroad" in prompt
+    assert "Recommendation Mode: broad" in prompt
 
 
 def test_prompt_defaults_recommendation_mode_to_personalized():
     prompt = _build_user_prompt(_job(), _profile())
 
-    assert "Recommendation Mode:\npersonalized" in prompt
+    assert "Recommendation Mode: personalized" in prompt
